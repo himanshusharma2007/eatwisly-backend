@@ -1,4 +1,4 @@
-const Scan = require('../models/Scan');
+const Scan = require('../models/scanModel');
 const fs = require('fs-extra');
 
 exports.getScanHistory = async (req, res) => {

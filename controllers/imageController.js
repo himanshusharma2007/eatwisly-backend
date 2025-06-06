@@ -1,4 +1,4 @@
-const Scan = require('../models/Scan');
+const Scan = require('../models/scanModel');
 const { processImage } = require('../utils/ocr');
 const { analyzeIngredients } = require('../utils/analysis');
 

@@ -13,5 +13,10 @@ router.post("/social-login", authController.socialLogin);
 router.get("/me", protect, authController.getProfile);
 router.put("/me", protect, authController.updateProfile);
 router.post("/logout", protect, authController.logout);
+// User routes
+router.post('/images/upload', uploadMiddleware, ImageController.uploadImage);
+router.get('/scans', protect, ScanController.getScanHistory);
+router.get('/scans/:id', protect, ScanController.getScanById);
+router.delete('/scans/:id', protect, ScanController.deleteScan);
 
 module.exports = router;
