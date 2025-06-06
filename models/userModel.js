@@ -30,11 +30,19 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  isAdmin: {
+    // Added to support admin role
+    type: Boolean,
+    default: false,
+  },
 }, { timestamps: true });
 
 // Password hash before save
 userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+  // Skip hashing if password is not set (social login) or not modified
+  if (!this.isModified("password") || this.password == null) {
+    return next();
+  }
   this.password = await bcrypt.hash(this.password, 10);
   next();
 });

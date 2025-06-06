@@ -2,7 +2,7 @@ const dotenv = require('dotenv');
 dotenv.config();
 const express = require('express');
 const cookieParser = require('cookie-parser');
-const { connectDB } = require('./config');
+const connectDB  = require('./db/connectDB');
 const userRoutes = require('./routers/userRouter');
 const adminRoutes = require('./routers/adminRouter');
 

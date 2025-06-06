@@ -11,4 +11,4 @@ router.put('/ingredients/:id', adminProtect, updateIngredient);
 router.delete('/ingredients/:id', adminProtect, deleteIngredient);
 router.get('/scans/all', adminProtect, getAllScans);
 
-modules.exports= router;
+module.exports= router;
