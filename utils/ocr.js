@@ -1,5 +1,11 @@
 const Tesseract = require('tesseract.js');
 const { createCanvas, loadImage } = require('canvas');
+const path = require('path');
+const fs = require('fs-extra');
+
+// Specify Tesseract cache path
+const TESSERACT_CACHE_PATH = path.resolve(__dirname, '..', 'tesseract_cache');
+fs.ensureDirSync(TESSERACT_CACHE_PATH);
 
 const preprocessImage = async (buffer) => {
   const img = await loadImage(buffer);
@@ -23,13 +29,15 @@ const preprocessImage = async (buffer) => {
 
 exports.processImage = async (file) => {
   try {
-    const processedBuffer = await preprocessImage(file.buffer || file.path);
+    const buffer = file.buffer || await fs.readFile(file.path); // Handle both memory and disk storage
+    const processedBuffer = await preprocessImage(buffer);
     const { data: { text } } = await Tesseract.recognize(
       processedBuffer,
       'eng',
       {
         tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,():-/%'
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,():-/%',
+        cachePath: TESSERACT_CACHE_PATH, // Store Tesseract data in tesseract_cache
       }
     );
 
@@ -37,8 +45,10 @@ exports.processImage = async (file) => {
       throw new Error('No text found in the image');
     }
 
+    console.log('OCR completed successfully'); // Debug log
     return text.trim();
   } catch (error) {
+    console.error('OCR processing error:', error);
     throw new Error(`OCR processing failed: ${error.message}`);
   }
 };
