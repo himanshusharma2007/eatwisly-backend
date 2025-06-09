@@ -1,7 +1,8 @@
 const Scan = require('../models/scanModel');
 const { processImage } = require('../utils/ocr');
 const { analyzeIngredients } = require('../utils/analysis');
-const fs = require('fs-extra');
+const { Upload } = require('@aws-sdk/lib-storage');
+const {s3Client}  = require('../middlewares/uploadMiddleware');
 
 exports.uploadImageAuth = async (req, res) => {
   try {
@@ -25,8 +26,34 @@ exports.uploadImageAuth = async (req, res) => {
       return res.status(400).json({ message: 'Invalid analysis recommendations structure' });
     }
 
-    // Construct relative path (e.g., /Uploads/<userId>/filename.jpg)
-    const relativePath = `/Uploads/${req.user._id.toString()}/${req.file.filename}`;
+    // Construct S3 key (e.g., Uploads/<userId>/filename.jpg)
+    const userId = req.user._id.toString();
+    const timestamp = Date.now();
+    const sanitizedFilename = req.file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '');
+    const filename = `${timestamp}_${sanitizedFilename}`;
+    const s3Key = `Uploads/${userId}/${filename}`;
+    console.log('Saving file to S3:', s3Key); // Debug log
+
+    // Upload to S3 using @aws-sdk/lib-storage
+    const upload = new Upload({
+      client: s3Client,
+      params: {
+        Bucket: process.env.S3_BUCKET,
+        Key: s3Key,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype
+      }
+    });
+
+    await upload.done();
+    console.log('File uploaded to S3:', s3Key); // Debug log
+
+    // Construct S3 URL
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
+    console.log('S3 URL:', s3Url); // Debug log
+
+    // Construct relative path for database (e.g., /Uploads/<userId>/filename.jpg)
+    const relativePath = `/Uploads/${userId}/${filename}`;
     console.log('Saving relative path:', relativePath); // Debug log
 
     // Save to MongoDB
@@ -40,9 +67,12 @@ exports.uploadImageAuth = async (req, res) => {
     await scan.save();
     console.log('Scan saved, ID:', scan._id); // Debug log
 
-    res.json({ extractedText, analysis, imagePath: relativePath, scanId: scan._id });
+    res.json({ extractedText, analysis, imagePath: s3Url, scanId: scan._id });
   } catch (error) {
     console.error('Authenticated image processing error:', error.message); // Debug log
+    if (error.name === 'AccessDenied') {
+      return res.status(403).json({ message: 'S3 Access Denied: Check IAM permissions for s3:PutObject' });
+    }
     res.status(500).json({ message: `Failed to process image: ${error.message}` });
   }
 };
@@ -59,7 +89,6 @@ exports.uploadImageGuest = async (req, res) => {
     // Confirm memory storage (no disk write)
     if (req.file.path) {
       console.warn('Unexpected disk write detected for guest upload:', req.file.path); // Debug log
-      // Clean up any unexpected temporary file
       try {
         await fs.unlink(req.file.path);
         console.log('Cleaned up unexpected file:', req.file.path); // Debug log

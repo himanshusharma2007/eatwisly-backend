@@ -1,49 +1,60 @@
 const Scan = require('../models/scanModel');
-const fs = require('fs-extra');
+const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const {s3Client}  = require('../middlewares/uploadMiddleware');
 
 exports.getScanHistory = async (req, res) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
-    const skip = (page - 1) * limit;
-
-    const scans = await Scan.find({ userId: req.user._id })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await Scan.countDocuments({ userId: req.user._id });
-
-    res.json({ scans, total, page: parseInt(page), limit: parseInt(limit) });
+    const scans = await Scan.find({ userId: req.user._id }).sort({ createdAt: -1 });
+    res.json(scans);
   } catch (error) {
-    console.error('Get scan history error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error fetching scan history:', error.message); // Debug log
+    res.status(500).json({ message: 'Failed to fetch scan history' });
   }
 };
 
 exports.getScanById = async (req, res) => {
   try {
     const scan = await Scan.findOne({ _id: req.params.id, userId: req.user._id });
-    if (!scan) return res.status(404).json({ message: 'Scan not found' });
-
-    res.json({ scan });
+    if (!scan) {
+      return res.status(404).json({ message: 'Scan not found' });
+    }
+    res.json(scan);
   } catch (error) {
-    console.error('Get scan error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error fetching scan:', error.message); // Debug log
+    res.status(500).json({ message: 'Failed to fetch scan' });
   }
 };
 
 exports.deleteScan = async (req, res) => {
   try {
     const scan = await Scan.findOne({ _id: req.params.id, userId: req.user._id });
-    if (!scan) return res.status(404).json({ message: 'Scan not found' });
+    if (!scan) {
+      return res.status(404).json({ message: 'Scan not found' });
+    }
 
-    // Delete image file
-    await fs.remove(scan.imagePath);
+    // Extract the S3 key from imagePath (remove the leading /Uploads/ to match S3 key)
+    const s3Key = scan.imagePath.replace(/^\/Uploads\//, '');
+    console.log(`Deleting file from S3: ${s3Key}`); // Debug log
 
-    await scan.remove();
+    // Delete the file from S3 using AWS SDK v3
+    const command = new DeleteObjectCommand({
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key
+    });
+    await s3Client.send(command);
+
+    console.log(`Successfully deleted file from S3: ${s3Key}`); // Debug log
+
+    // Delete the scan from MongoDB
+    await Scan.deleteOne({ _id: req.params.id, userId: req.user._id });
+    console.log('Scan deleted from MongoDB, ID:', req.params.id); // Debug log
+
     res.json({ message: 'Scan deleted successfully' });
   } catch (error) {
-    console.error('Delete scan error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error deleting scan:', error.message); // Debug log
+    if (error.name === 'AccessDenied') {
+      return res.status(403).json({ message: 'S3 Access Denied: Check IAM permissions for s3:DeleteObject' });
+    }
+    res.status(500).json({ message: 'Failed to delete scan' });
   }
 };
