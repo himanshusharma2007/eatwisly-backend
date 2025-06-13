@@ -99,7 +99,6 @@ exports.socialLogin = async (req, res) => {
       user = new User({
         email,
         name: name || "Social User",
-
         isSocialLogin: true,
         password: null,
       });
@@ -115,7 +114,6 @@ exports.socialLogin = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-       
       },
     });
   } catch (error) {
@@ -146,7 +144,7 @@ exports.updateProfile = async (req, res) => {
     const userId = req.user._id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    const { name, age, gender, email, password } = req.body;
+    const { name, age, gender, email, password, diseases, allergies, weight } = req.body;
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -156,6 +154,9 @@ exports.updateProfile = async (req, res) => {
     if (gender) user.gender = gender;
     if (email) user.email = email;
     if (password) user.password = password; // will be hashed in pre-save hook
+    if (diseases) user.diseases = Array.isArray(diseases) ? diseases : [];
+    if (allergies) user.allergies = Array.isArray(allergies) ? allergies : [];
+    if (weight) user.weight = Number(weight) || undefined;
 
     await user.save();
 
@@ -167,6 +168,9 @@ exports.updateProfile = async (req, res) => {
         email: user.email,
         age: user.age,
         gender: user.gender,
+        diseases: user.diseases,
+        allergies: user.allergies,
+        weight: user.weight,
       },
     });
   } catch (error) {

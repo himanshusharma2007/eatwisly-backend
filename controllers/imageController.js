@@ -2,8 +2,7 @@ const Scan = require('../models/scanModel');
 const { processImage } = require('../utils/ocr');
 const { Upload } = require('@aws-sdk/lib-storage');
 const { s3Client } = require('../middlewares/uploadMiddleware');
-const {  getGeminiInsight } = require('../utils/geminiHelper');
-
+const { getGeminiInsight } = require('../utils/geminiHelper');
 
 // Function to generate user-friendly insights using Gemini API
 
@@ -19,8 +18,18 @@ exports.uploadImageAuth = async (req, res) => {
     // Process image with OCR (using Google Cloud Vision API)
     const extractedText = await processImage(req.file);
 
-    // Analyze using Gemini API
-    const analysis = await getGeminiInsight(extractedText);
+    // Prepare user profile for Gemini
+    const userProfile = {
+      gender: req.user.gender,
+      name: req.user.name,
+      age: req.user.age,
+      weight: req.user.weight,
+      diseases: req.user.diseases,
+      allergies: req.user.allergies
+    };
+
+    // Analyze using Gemini API with user profile
+    const analysis = await getGeminiInsight(extractedText, userProfile);
     console.log('Analysis result:', JSON.stringify(analysis, null, 2)); // Debug log
 
     // Validate recommendations structure
@@ -98,7 +107,7 @@ exports.uploadImageGuest = async (req, res) => {
     // Process image with OCR (using Google Cloud Vision API)
     const extractedText = await processImage(req.file);
 
-    // Analyze using Gemini API
+    // Analyze using Gemini API without user profile
     const analysis = await getGeminiInsight(extractedText);
     console.log('Analysis result:', JSON.stringify(analysis, null, 2)); // Debug log
 

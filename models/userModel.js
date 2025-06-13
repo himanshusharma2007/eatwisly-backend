@@ -31,9 +31,20 @@ const userSchema = new mongoose.Schema({
     default: false,
   },
   isAdmin: {
-    // Added to support admin role
     type: Boolean,
     default: false,
+  },
+  diseases: {
+    type: [String],
+    default: [],
+  },
+  allergies: {
+    type: [String],
+    default: [],
+  },
+  weight: {
+    type: Number,
+    required: false,
   },
 }, { timestamps: true });
 

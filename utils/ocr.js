@@ -35,7 +35,6 @@ exports.processImage = async (file) => {
       processedBuffer,
       'eng',
       {
-        logger: m => console.log(m),
         tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
         tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,():-/%',
         cachePath: TESSERACT_CACHE_PATH,
