@@ -8,12 +8,12 @@ const userSchema = new mongoose.Schema({
   },
   age: {
     type: Number,
-    required: true,
+    required: false,
   },
   gender: {
     type: String,
     enum: ["male", "female", "other"],
-    required: true,
+    required: false,
   },
   email: {
     type: String,

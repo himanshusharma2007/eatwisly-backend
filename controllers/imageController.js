@@ -1,8 +1,11 @@
 const Scan = require('../models/scanModel');
 const { processImage } = require('../utils/ocr');
-const { analyzeIngredients } = require('../utils/analysis');
 const { Upload } = require('@aws-sdk/lib-storage');
-const {s3Client}  = require('../middlewares/uploadMiddleware');
+const { s3Client } = require('../middlewares/uploadMiddleware');
+const {  getGeminiInsight } = require('../utils/geminiHelper');
+
+
+// Function to generate user-friendly insights using Gemini API
 
 exports.uploadImageAuth = async (req, res) => {
   try {
@@ -13,17 +16,23 @@ exports.uploadImageAuth = async (req, res) => {
       return res.status(400).json({ message: 'No image provided' });
     }
 
-    // Process image with OCR
+    // Process image with OCR (using Google Cloud Vision API)
     const extractedText = await processImage(req.file);
 
-    // Analyze ingredients
-    const analysis = await analyzeIngredients(extractedText);
+    // Analyze using Gemini API
+    const analysis = await getGeminiInsight(extractedText);
     console.log('Analysis result:', JSON.stringify(analysis, null, 2)); // Debug log
 
     // Validate recommendations structure
     if (!Array.isArray(analysis.recommendations) || analysis.recommendations.some(rec => !rec.type || !rec.title || !rec.message)) {
       console.error('Invalid recommendations structure:', analysis.recommendations); // Debug log
       return res.status(400).json({ message: 'Invalid analysis recommendations structure' });
+    }
+
+    // Additional validation for harmfulIngredients
+    if (!Array.isArray(analysis.harmfulIngredients)) {
+      console.error('Validation failed: harmfulIngredients is not an array:', analysis.harmfulIngredients);
+      return res.status(400).json({ message: 'Invalid analysis: harmfulIngredients must be an array' });
     }
 
     // Construct S3 key (e.g., Uploads/<userId>/filename.jpg)
@@ -86,22 +95,11 @@ exports.uploadImageGuest = async (req, res) => {
       return res.status(400).json({ message: 'No image provided' });
     }
 
-    // Confirm memory storage (no disk write)
-    if (req.file.path) {
-      console.warn('Unexpected disk write detected for guest upload:', req.file.path); // Debug log
-      try {
-        await fs.unlink(req.file.path);
-        console.log('Cleaned up unexpected file:', req.file.path); // Debug log
-      } catch (cleanupError) {
-        console.error('Error cleaning up temporary file:', cleanupError.message); // Debug log
-      }
-    }
-
-    // Process image with OCR
+    // Process image with OCR (using Google Cloud Vision API)
     const extractedText = await processImage(req.file);
 
-    // Analyze ingredients
-    const analysis = await analyzeIngredients(extractedText);
+    // Analyze using Gemini API
+    const analysis = await getGeminiInsight(extractedText);
     console.log('Analysis result:', JSON.stringify(analysis, null, 2)); // Debug log
 
     // Return results without saving

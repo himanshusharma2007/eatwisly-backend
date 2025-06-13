@@ -40,7 +40,12 @@ exports.register = async (req, res) => {
     const token = createToken(user._id);
     sendTokenCookie(res, token);
 
-    res.status(201).json({ message: "User registered successfully", user: { id: user._id, name, email, age, gender } });
+    res
+      .status(201)
+      .json({
+        message: "User registered successfully",
+        user: { id: user._id, name, email, age, gender },
+      });
   } catch (error) {
     console.error("Register error:", error);
     res.status(500).json({ message: "Server error" });
@@ -51,18 +56,29 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ message: "Email and password required" });
+    if (!email || !password)
+      return res.status(400).json({ message: "Email and password required" });
 
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
     const isMatch = await user.comparePassword(password);
-    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
+    if (!isMatch)
+      return res.status(401).json({ message: "Invalid credentials" });
 
     const token = createToken(user._id);
     sendTokenCookie(res, token);
 
-    res.json({ message: "Login successful", user: { id: user._id, name: user.name, email: user.email, age: user.age, gender: user.gender } });
+    res.json({
+      message: "Login successful",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        age: user.age,
+        gender: user.gender,
+      },
+    });
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: "Server error" });
@@ -72,8 +88,9 @@ exports.login = async (req, res) => {
 // Social login (placeholder)
 exports.socialLogin = async (req, res) => {
   try {
-    const { email, name, age, gender, socialId } = req.body;
-    if (!email || !socialId) return res.status(400).json({ message: "Email and social ID required" });
+    const { email, name, socialId } = req.body;
+    if (!email || !socialId)
+      return res.status(400).json({ message: "Email and social ID required" });
 
     let user = await User.findOne({ email });
 
@@ -82,8 +99,7 @@ exports.socialLogin = async (req, res) => {
       user = new User({
         email,
         name: name || "Social User",
-        age: age || 0,
-        gender: gender || "other",
+
         isSocialLogin: true,
         password: null,
       });
@@ -93,7 +109,15 @@ exports.socialLogin = async (req, res) => {
     const token = createToken(user._id);
     sendTokenCookie(res, token);
 
-    res.json({ message: "Social login successful", user: { id: user._id, name: user.name, email: user.email, age: user.age, gender: user.gender } });
+    res.json({
+      message: "Social login successful",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+       
+      },
+    });
   } catch (error) {
     console.error("Social login error:", error);
     res.status(500).json({ message: "Server error" });
@@ -103,7 +127,7 @@ exports.socialLogin = async (req, res) => {
 // Get current user profile
 exports.getProfile = async (req, res) => {
   try {
-    const userId = req.userId;
+    const userId = req.user._id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const user = await User.findById(userId).select("-password -__v");
@@ -119,7 +143,7 @@ exports.getProfile = async (req, res) => {
 // Update profile
 exports.updateProfile = async (req, res) => {
   try {
-    const userId = req.userId;
+    const userId = req.user._id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const { name, age, gender, email, password } = req.body;
@@ -135,7 +159,16 @@ exports.updateProfile = async (req, res) => {
 
     await user.save();
 
-    res.json({ message: "Profile updated", user: { id: user._id, name: user.name, email: user.email, age: user.age, gender: user.gender } });
+    res.json({
+      message: "Profile updated",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        age: user.age,
+        gender: user.gender,
+      },
+    });
   } catch (error) {
     console.error("Update profile error:", error);
     res.status(500).json({ message: "Server error" });

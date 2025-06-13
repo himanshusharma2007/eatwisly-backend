@@ -35,11 +35,13 @@ exports.processImage = async (file) => {
       processedBuffer,
       'eng',
       {
-        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
+        logger: m => console.log(m),
+        tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
         tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,():-/%',
-        cachePath: TESSERACT_CACHE_PATH, // Store Tesseract data in tesseract_cache
+        cachePath: TESSERACT_CACHE_PATH,
       }
     );
+    
 
     if (!text.trim()) {
       throw new Error('No text found in the image');
