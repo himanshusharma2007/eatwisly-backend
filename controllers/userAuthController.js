@@ -2,7 +2,7 @@ const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
-const JWT_SECRET = process.env.JWT_SECRET || "yoursecretkey";
+const JWT_SECRET = process.env.JWT_SECRET ;
 const JWT_EXPIRES_IN = "7d"; // 7 days
 
 // Helper: create JWT token
@@ -40,12 +40,10 @@ exports.register = async (req, res) => {
     const token = createToken(user._id);
     sendTokenCookie(res, token);
 
-    res
-      .status(201)
-      .json({
-        message: "User registered successfully",
-        user: { id: user._id, name, email, age, gender },
-      });
+    res.status(201).json({
+      message: "User registered successfully",
+      user: { id: user._id, name, email, age, gender },
+    });
   } catch (error) {
     console.error("Register error:", error);
     res.status(500).json({ message: "Server error" });
@@ -139,21 +137,32 @@ exports.getProfile = async (req, res) => {
 };
 
 // Update profile
+
+// 4. Update userAuthController.js - updateProfile function
 exports.updateProfile = async (req, res) => {
+  console.log('req.body', req.body)
   try {
     const userId = req.user._id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    const { name, age, gender, email, password, diseases, allergies, weight } = req.body;
+    const { name, age, gender, email, password, diseases, allergies, weight } =
+      req.body;
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    // Handle image upload
+    if (req.file) {
+      const base64Image = req.file.buffer.toString("base64");
+      user.profileImage = `data:${req.file.mimetype};base64,${base64Image}`;
+    }
+
+    // Update other fields...
     if (name) user.name = name;
     if (age) user.age = age;
     if (gender) user.gender = gender;
     if (email) user.email = email;
-    if (password) user.password = password; // will be hashed in pre-save hook
+    if (password) user.password = password;
     if (diseases) user.diseases = Array.isArray(diseases) ? diseases : [];
     if (allergies) user.allergies = Array.isArray(allergies) ? allergies : [];
     if (weight) user.weight = Number(weight) || undefined;
@@ -171,6 +180,7 @@ exports.updateProfile = async (req, res) => {
         diseases: user.diseases,
         allergies: user.allergies,
         weight: user.weight,
+        profileImage: user.profileImage,
       },
     });
   } catch (error) {

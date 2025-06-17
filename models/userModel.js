@@ -15,6 +15,10 @@ const userSchema = new mongoose.Schema({
     enum: ["male", "female", "other"],
     required: false,
   },
+  profileImage: {
+    type: String, // Store base64 string
+    required: false
+},
   email: {
     type: String,
     required: true,
@@ -25,6 +29,7 @@ const userSchema = new mongoose.Schema({
     required: function () {
       return !this.isSocialLogin;
     },
+    
   },
   isSocialLogin: {
     type: Boolean,
