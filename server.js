@@ -7,6 +7,8 @@ const connectDB  = require('./db/connectDB');
 const userRoutes = require('./routers/userRouter');
 const adminRoutes = require('./routers/adminRouter');
 const scanRoutes = require('./routers/scanRouter'); 
+const feedbackRoutes = require('./routers/feedbackRouter'); 
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -22,6 +24,7 @@ app.use(cookieParser());
 app.use('/api/auth', userRoutes);
 app.use('/api', adminRoutes);
 app.use('/api/scan', scanRoutes);
+app.use('/api/feedback', feedbackRoutes);
 // Basic route
 app.get('/', (req, res) => {
   res.send('Welcome to the EatWisly API!');

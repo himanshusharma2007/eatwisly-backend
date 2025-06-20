@@ -6,7 +6,6 @@ const scanSchema = new mongoose.Schema({
     type: String, 
     required: true,
     // Store path as /Uploads/<userId>/filename.<extension>
-    match: /^\/Uploads\/[a-f\d]{24}\/[\w\-]+\.(jpg|jpeg|png|heic)$/ // Validate format: /Uploads/userId/filename.extension
   },
   extractedText: { type: String, required: true },
   analysis: {

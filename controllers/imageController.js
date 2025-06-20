@@ -78,7 +78,7 @@ exports.uploadImageAuth = async (req, res) => {
     console.log('Saving scan for user:', req.user._id); // Debug log
     const scan = new Scan({
       userId: req.user._id,
-      imagePath: relativePath,
+      imagePath: s3Url,
       extractedText,
       analysis
     });

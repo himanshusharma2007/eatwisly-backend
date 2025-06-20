@@ -3,9 +3,17 @@ const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const {s3Client}  = require('../middlewares/uploadMiddleware');
 
 exports.getScanHistory = async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const skip = (page - 1) * limit;
+
   try {
-    const scans = await Scan.find({ userId: req.user._id }).sort({ createdAt: -1 });
-    res.json(scans);
+    const scans = await Scan.find({ userId: req.user._id })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+    const total = await Scan.countDocuments({ userId: req.user._id });
+    res.json({ scans, total, page, limit });
   } catch (error) {
     console.error('Error fetching scan history:', error.message); // Debug log
     res.status(500).json({ message: 'Failed to fetch scan history' });
