@@ -50,13 +50,12 @@ exports.uploadImageAuth = async (req, res) => {
     const sanitizedFilename = req.file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '');
     const filename = `${timestamp}_${sanitizedFilename}`;
     const s3Key = `Uploads/${userId}/${filename}`;
-    console.log('Saving file to S3:', s3Key); // Debug log
 
     // Upload to S3 using @aws-sdk/lib-storage
     const upload = new Upload({
       client: s3Client,
       params: {
-        Bucket: process.env.S3_BUCKET,
+        Bucket: process.env.AWS_S3_BUCKET, // Use consistent env variable
         Key: s3Key,
         Body: req.file.buffer,
         ContentType: req.file.mimetype
@@ -64,26 +63,21 @@ exports.uploadImageAuth = async (req, res) => {
     });
 
     await upload.done();
-    console.log('File uploaded to S3:', s3Key); // Debug log
 
-    // Construct S3 URL
-    const s3Url = `https://${process.env.S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
-    console.log('S3 URL:', s3Url); // Debug log
+    // Construct S3 URL for response (though it won't be directly accessible due to private bucket)
+    const s3Url = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
 
     // Construct relative path for database (e.g., /Uploads/<userId>/filename.jpg)
-    const relativePath = `/Uploads/${userId}/${filename}`;
-    console.log('Saving relative path:', relativePath); // Debug log
+    const relativePath = `/${s3Key}`; // Store with leading slash for consistency
 
     // Save to MongoDB
-    console.log('Saving scan for user:', req.user._id); // Debug log
     const scan = new Scan({
       userId: req.user._id,
-      imagePath: s3Url,
+      imagePath: relativePath,
       extractedText,
       analysis
     });
     await scan.save();
-    console.log('Scan saved, ID:', scan._id); // Debug log
 
     res.json({ extractedText, analysis, imagePath: s3Url, scanId: scan._id });
   } catch (error) {
@@ -98,7 +92,7 @@ exports.uploadImageAuth = async (req, res) => {
 exports.uploadImageGuest = async (req, res) => {
   try {
     console.log('Guest upload invoked'); // Debug log
-    console.log('File details:', req.file); // Debug log
+
 
     if (!req.file) {
       return res.status(400).json({ message: 'No image provided' });
@@ -109,10 +103,7 @@ exports.uploadImageGuest = async (req, res) => {
 
     // Analyze using Gemini API without user profile
     const analysis = await getGeminiInsight(extractedText);
-    console.log('Analysis result:', JSON.stringify(analysis, null, 2)); // Debug log
 
-    // Return results without saving
-    console.log('Returning guest results'); // Debug log
     res.json({ extractedText, analysis });
   } catch (error) {
     console.error('Guest image processing error:', error.message); // Debug log
