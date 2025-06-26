@@ -9,6 +9,7 @@ const scanSchema = new mongoose.Schema({
   },
   extractedText: { type: String, required: true },
   analysis: {
+    healthImpact: { type: String },
     harmfulIngredients: [{
       name: String,
       severity: String,
@@ -17,14 +18,20 @@ const scanSchema = new mongoose.Schema({
     }],
     nutritionalInfo: {
       totalSugar: Number,
-      totalSodium: Number
+      totalSodium: Number,
+      caloriesPerServing: Number,
+      servingSize: String
     },
     healthScore: Number,
+    shouldEat: String,
+    shouldEatReason: String,
     recommendations: [{
       type: { type: String, required: true },
       title: { type: String, required: true },
       message: { type: String, required: true }
-    }]
+    }],
+    healthyAlternatives: [String],
+    additionalNotes: String
   },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

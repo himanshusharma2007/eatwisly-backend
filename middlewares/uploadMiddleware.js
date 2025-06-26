@@ -1,5 +1,5 @@
 const multer = require('multer');
-const { S3Client } = require('@aws-sdk/client-s3');
+const { S3Client  } = require('@aws-sdk/client-s3');
 const { Upload } = require('@aws-sdk/lib-storage');
 const sharp = require('sharp');
 const stream = require('stream');

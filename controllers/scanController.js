@@ -2,7 +2,7 @@ const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const { GetObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const scanModel = require("../models/scanModel");
 const { s3Client } = require("../middlewares/uploadMiddleware");
-
+const { Upload } = require('@aws-sdk/lib-storage');
 exports.getScanHistory = async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
@@ -96,31 +96,123 @@ exports.deleteScan = async (req, res) => {
       return res.status(404).json({ message: "Scan not found" });
     }
 
-    // Fix: Use scan.imagePath instead of scanModel.imagePath and remove leading slash
     const s3Key = scan.imagePath.replace(/^\//, "");
 
-    // Delete the file from S3 using AWS SDK v3
-    const command = new DeleteObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET, // Use consistent env variable
-      Key: s3Key,
-    });
-    await s3Client.send(command);
-
-
-    // Delete the scan from MongoDB
-    await scanModel.deleteOne({ _id: req.params.id, userId: req.user._id });
-
-    res.json({ message: "Scan deleted successfully" });
-  } catch (error) {
-    console.error("Error deleting scan:", error.message); // Debug log
-    if (error.name === "AccessDenied") {
-      return res
-        .status(403)
-        .json({
-          message:
-            "S3 Access Denied: Check IAM permissions for s3:DeleteObject",
+    try {
+      // Delete the file from S3 using AWS SDK v3
+      const command = new DeleteObjectCommand({
+        Bucket: process.env.AWS_S3_BUCKET,
+        Key: s3Key,
+      });
+      await s3Client.send(command);
+      
+      // Only delete from MongoDB if S3 deletion was successful
+      await scanModel.deleteOne({ _id: req.params.id, userId: req.user._id });
+      res.json({ message: "Scan deleted successfully" });
+    } catch (s3Error) {
+      console.error("Error deleting from S3:", s3Error.message);
+      if (s3Error.name === "AccessDenied") {
+        return res.status(403).json({
+          message: "S3 Access Denied: Check IAM permissions for s3:DeleteObject"
         });
+      }
+      return res.status(500).json({ 
+        message: "Failed to delete file from S3. Scan retained in database." 
+      });
     }
-    res.status(500).json({ message: "Failed to delete scan" });
+  } catch (error) {
+    console.error("Error in delete operation:", error.message);
+    res.status(500).json({ message: "Server error during delete operation" });
+  }
+};
+
+exports.saveScanResult = async (req, res) => {
+  try {
+    console.log('Save scan result invoked, user:', req.user._id);
+    const { extractedText } = req.body;
+    const file = req.file;
+    const analysis = JSON.parse(req.body.analysis.replace(/<\/?[^>]+(>|$)/g, ""));
+    if (!file) {
+      return res.status(400).json({ message: 'No image provided' });
+    }
+
+    if (!extractedText || !analysis || typeof analysis !== 'object') {
+      console.error('Invalid scan data:', { extractedText, analysis });
+      return res.status(400).json({ message: 'Invalid scan data provided' });
+    }
+
+    // Validate analysis structure
+    if (!Array.isArray(analysis.recommendations) || 
+        analysis.recommendations.some(rec => !rec.type || !rec.title || !rec.message)) {
+      console.error('Invalid recommendations structure:', analysis.recommendations);
+      return res.status(400).json({ message: 'Invalid analysis recommendations structure' });
+    }
+
+    if (!Array.isArray(analysis.harmfulIngredients)) {
+      console.error('Validation failed: harmfulIngredients is not an array:', analysis.harmfulIngredients);
+      return res.status(400).json({ message: 'Invalid analysis: harmfulIngredients must be an array' });
+    }
+
+    if (!analysis.nutritionalInfo || 
+        typeof analysis.nutritionalInfo.totalSugar !== 'number' ||
+        typeof analysis.nutritionalInfo.totalSodium !== 'number') {
+      console.error('Invalid nutritionalInfo structure:', analysis.nutritionalInfo);
+      return res.status(400).json({ message: 'Invalid nutritional information structure' });
+    }
+
+    // Construct S3 key
+    const userId = req.user._id.toString();
+    const timestamp = Date.now();
+    const sanitizedFilename = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '');
+    const filename = `${timestamp}_${sanitizedFilename}`;
+    const s3Key = `Uploads/${userId}/${filename}`;
+
+    // Upload to S3
+    const upload = new Upload({
+      client: s3Client,
+      params: {
+        Bucket: process.env.AWS_S3_BUCKET,
+        Key: s3Key,
+        Body: file.buffer,
+        ContentType: file.mimetype
+      }
+    });
+
+    await upload.done();
+
+    // Construct S3 URL and relative path
+    const s3Url = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
+    const relativePath = `/${s3Key}`;
+
+    // Save to MongoDB
+    const scan = new scanModel({
+      userId: req.user._id,
+      imagePath: relativePath,
+      extractedText,
+      analysis: {
+        healthImpact: analysis.healthImpact,
+        harmfulIngredients: analysis.harmfulIngredients,
+        nutritionalInfo: analysis.nutritionalInfo,
+        healthScore: analysis.healthScore,
+        shouldEat: analysis.shouldEat,
+        shouldEatReason: analysis.shouldEatReason,
+        recommendations: analysis.recommendations,
+        healthyAlternatives: analysis.healthyAlternatives,
+        additionalNotes: analysis.additionalNotes
+      }
+    });
+    await scan.save();
+
+    res.json({
+      message: 'Scan result saved successfully',
+      imagePath: s3Url,
+      scanId: scan._id
+    });
+  } catch (error) {
+    console.error('Save scan result error:', error.message);
+    if (error.name === 'AccessDenied') {
+      return res.status(403).json({ message: 'S3 Access Denied: Check IAM permissions for s3:PutObject' });
+    }
+    res.status(500).json({ message: `Failed to save scan result: ${error.message}` });
   }
 };
