@@ -5,7 +5,7 @@ const { protect } = require("../middlewares/auth");
 
 const { uploadMiddleware } = require("../middlewares/uploadMiddleware");
 const { uploadImageAuth, uploadImageGuest } = require("../controllers/imageController");
-const { saveScanResult, getScanHistory, getScanById, deleteScan } = require("../controllers/ScanController");
+const { saveScanResult, getScanHistory, getScanById, deleteScan } = require("../controllers/scanController");
 
 // User routes
 router.post('/images/upload/auth', protect, uploadMiddleware, uploadImageAuth);// Authenticated
