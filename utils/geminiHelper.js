@@ -73,7 +73,7 @@ REASON: [Brief, clear explanation]
 [Comma-separated list of 3-5 healthier alternatives]
 
 === ADDITIONAL NOTES ===
-[Any other important information, tips, or warnings specific to this food]
+[Any other important information, tips, or warnings specific to this food based on the user profile or general health guidelines]
 
 EXAMPLE FORMAT:
 === HEALTH IMPACT ===
@@ -368,113 +368,270 @@ function parseHealthyAlternatives(text) {
 
 // Helper function to generate recommendations
 function generateRecommendations(data) {
-  const recommendations = [];
   const { suitability, harmfulIngredients, shouldEat, healthScore, additionalNotes, healthyAlternatives, userProfile } = data;
-
-  // Health score based recommendations
-  if (healthScore < 40) {
-    recommendations.push({
+  
+  // Check if user has specific health conditions
+  const hasSpecificConditions = userProfile && (
+    (userProfile.diseases && userProfile.diseases.length > 0) ||
+    (userProfile.allergies && userProfile.allergies.length > 0)
+  );
+  
+  const targetRecommendations = hasSpecificConditions ? 4 : 3;
+  const recommendations = [];
+  const usedTypes = new Set(); // Track recommendation types to avoid duplicates
+  
+  // Priority scoring system for recommendations
+  const potentialRecommendations = [];
+  
+  // 1. Critical health warnings (highest priority)
+  if (healthScore < 30) {
+    potentialRecommendations.push({
+      priority: 10,
       type: 'warning',
-      title: 'Poor Health Rating',
-      message: 'This food has a low health score. Consider choosing healthier alternatives for regular consumption.'
+      title: 'Critical Health Concern',
+      message: `This food has a very low health score (${healthScore}/100). Regular consumption could negatively impact your health. Consider avoiding this product.`,
+      category: 'health_score'
     });
-  } else if (healthScore >= 70) {
-    recommendations.push({
+  } else if (healthScore < 50) {
+    potentialRecommendations.push({
+      priority: 8,
+      type: 'warning',
+      title: 'Below Average Health Rating',
+      message: `With a health score of ${healthScore}/100, this food should be consumed sparingly as part of a balanced diet.`,
+      category: 'health_score'
+    });
+  } else if (healthScore >= 75) {
+    potentialRecommendations.push({
+      priority: 6,
       type: 'positive',
-      title: 'Good Health Choice',
-      message: 'This food has a good health rating and can be part of a balanced diet.'
+      title: 'Excellent Health Choice',
+      message: `Great choice! This food scores ${healthScore}/100 and can be a regular part of your healthy diet.`,
+      category: 'health_score'
     });
   }
-
-  // Suitability recommendations
-  if (suitability.kids === 'No') {
-    recommendations.push({
-      type: 'caution',
-      title: 'Not Suitable for Children',
-      message: 'This product contains ingredients that may not be appropriate for children.'
-    });
-  }
-
-  if (suitability.diabetics === 'No') {
-    recommendations.push({
-      type: 'caution',
-      title: 'Not Suitable for Diabetics',
-      message: 'High sugar content makes this unsuitable for people managing diabetes.'
-    });
-  }
-
-  if (suitability.heartPatients === 'No') {
-    recommendations.push({
-      type: 'caution',
-      title: 'Not Suitable for Heart Patients',
-      message: 'High sodium or unhealthy fat content may not be suitable for heart health.'
-    });
-  }
-
-  // User-specific recommendations
-  if (userProfile && suitability.userSpecific === 'No') {
-    recommendations.push({
-      type: 'warning',
-      title: 'Not Recommended for You',
-      message: 'Based on your health profile, this food may not be the best choice for your specific needs.'
-    });
-  }
-
-  // Harmful ingredients recommendations
-  if (harmfulIngredients.length > 0) {
-    const highSeverityIngredients = harmfulIngredients.filter(ing => ing.severity === 'High');
-    if (highSeverityIngredients.length > 0) {
-      recommendations.push({
-        type: 'warning',
-        title: 'Contains Harmful Ingredients',
-        message: `This product contains ingredients of concern: ${highSeverityIngredients.map(ing => ing.name).join(', ')}. Consider alternatives when possible.`
+  
+  // 2. User-specific health conditions (high priority)
+  if (hasSpecificConditions) {
+    if (userProfile.diseases && userProfile.diseases.length > 0) {
+      const diseaseList = userProfile.diseases.join(', ');
+      if (suitability.userSpecific === 'No') {
+        potentialRecommendations.push({
+          priority: 9,
+          type: 'warning',
+          title: 'Conflicts with Your Health Conditions',
+          message: `This food is not recommended for individuals with ${diseaseList}. Please consult your healthcare provider before consumption.`,
+          category: 'user_diseases'
+        });
+      } else {
+        potentialRecommendations.push({
+          priority: 7,
+          type: 'info',
+          title: 'Safe with Your Conditions',
+          message: `This food appears safe for your health conditions (${diseaseList}), but moderation is always key.`,
+          category: 'user_diseases'
+        });
+      }
+    }
+    
+    if (userProfile.allergies && userProfile.allergies.length > 0) {
+      const allergyList = userProfile.allergies.join(', ');
+      potentialRecommendations.push({
+        priority: 9,
+        type: 'caution',
+        title: 'Allergy Alert',
+        message: `Please check ingredients carefully as you have allergies to: ${allergyList}. Always read labels thoroughly.`,
+        category: 'user_allergies'
       });
     }
   }
-
-  // Should eat recommendations
+  
+  // 3. Harmful ingredients (high priority)
+  if (harmfulIngredients.length > 0) {
+    const highSeverity = harmfulIngredients.filter(ing => ing.severity === 'High');
+    const mediumSeverity = harmfulIngredients.filter(ing => ing.severity === 'Medium');
+    
+    if (highSeverity.length > 0) {
+      potentialRecommendations.push({
+        priority: 8,
+        type: 'warning',
+        title: 'Contains High-Risk Ingredients',
+        message: `Warning: Contains ${highSeverity.map(ing => ing.name).join(', ')}. These ingredients may pose significant health risks.`,
+        category: 'harmful_ingredients'
+      });
+    } else if (mediumSeverity.length > 0) {
+      potentialRecommendations.push({
+        priority: 6,
+        type: 'caution',
+        title: 'Contains Ingredients of Concern',
+        message: `Contains ${mediumSeverity.map(ing => ing.name).join(', ')}. Consider limiting consumption of this product.`,
+        category: 'harmful_ingredients'
+      });
+    }
+  }
+  
+  // 4. Age-specific recommendations
+  if (userProfile && userProfile.age) {
+    const age = userProfile.age;
+    if (age < 18 && suitability.kids === 'No') {
+      potentialRecommendations.push({
+        priority: 7,
+        type: 'caution',
+        title: 'Not Suitable for Your Age',
+        message: `At ${age} years old, this product may not provide the optimal nutrition needed for growth and development.`,
+        category: 'age_specific'
+      });
+    } else if (age >= 60 && (suitability.heartPatients === 'No' || healthScore < 60)) {
+      potentialRecommendations.push({
+        priority: 7,
+        type: 'info',
+        title: 'Senior Health Consideration',
+        message: 'As a senior, prioritizing nutrient-dense, heart-healthy foods is especially important for maintaining health.',
+        category: 'age_specific'
+      });
+    } else if (age >= 18 && age <= 25 && healthScore < 50) {
+      potentialRecommendations.push({
+        priority: 5,
+        type: 'info',
+        title: 'Young Adult Nutrition',
+        message: 'Building healthy eating habits now will benefit your long-term health. Consider choosing more nutritious options.',
+        category: 'age_specific'
+      });
+    }
+  }
+  
+  // 5. Specific health conditions suitability
+  if (suitability.diabetics === 'No' && !usedTypes.has('diabetic')) {
+    potentialRecommendations.push({
+      priority: 6,
+      type: 'caution',
+      title: 'High Sugar Content',
+      message: 'This food is high in sugar and may cause blood sugar spikes. Not recommended for diabetics or those monitoring sugar intake.',
+      category: 'diabetic_unsuitable'
+    });
+  }
+  
+  if (suitability.heartPatients === 'No' && !usedTypes.has('heart')) {
+    potentialRecommendations.push({
+      priority: 6,
+      type: 'caution',
+      title: 'Heart Health Concern',
+      message: 'High sodium or unhealthy fat content makes this unsuitable for heart health. Choose heart-friendly alternatives.',
+      category: 'heart_unsuitable'
+    });
+  }
+  
+  // 6. Consumption recommendations
   if (shouldEat.recommendation === 'No') {
-    recommendations.push({
+    potentialRecommendations.push({
+      priority: 7,
       type: 'warning',
-      title: 'Not Recommended',
-      message: shouldEat.reason
+      title: 'Not Recommended for Consumption',
+      message: shouldEat.reason,
+      category: 'consumption_advice'
     });
   } else if (shouldEat.recommendation === 'Occasionally') {
-    recommendations.push({
+    potentialRecommendations.push({
+      priority: 5,
       type: 'info',
-      title: 'Consume in Moderation',
-      message: shouldEat.reason
+      title: 'Occasional Consumption Only',
+      message: shouldEat.reason,
+      category: 'consumption_advice'
     });
   }
-
-  // Healthy alternatives recommendation
-  if (healthyAlternatives.length > 0 && (healthScore < 60 || shouldEat.recommendation !== 'Yes')) {
-    recommendations.push({
+  
+  // 7. Healthy alternatives (lower priority)
+  if (healthyAlternatives.length > 0 && healthScore < 60) {
+    const alternatives = healthyAlternatives.slice(0, 3).join(', ');
+    potentialRecommendations.push({
+      priority: 4,
       type: 'positive',
-      title: 'Healthier Alternatives Available',
-      message: `Try these healthier options: ${healthyAlternatives.slice(0, 3).join(', ')}.`
+      title: 'Better Alternatives Available',
+      message: `Consider these healthier options instead: ${alternatives}.`,
+      category: 'alternatives'
     });
   }
-
-  // Additional notes as recommendation
-  if (additionalNotes) {
-    recommendations.push({
+  
+  // 8. Positive reinforcement for good choices
+  if (healthScore >= 70 && shouldEat.recommendation === 'Yes') {
+    potentialRecommendations.push({
+      priority: 3,
+      type: 'positive',
+      title: 'Smart Nutritional Choice',
+      message: 'This food aligns well with healthy eating guidelines. Great job making a nutritious choice!',
+      category: 'positive_reinforcement'
+    });
+  }
+  
+  // 9. Additional notes (lowest priority)
+  if (additionalNotes && additionalNotes.length > 20) {
+    potentialRecommendations.push({
+      priority: 2,
       type: 'info',
-      title: 'Additional Information',
-      message: additionalNotes
+      title: 'Additional Nutrition Insights',
+      message: additionalNotes,
+      category: 'additional_notes'
     });
   }
-
-  // Ensure we always have at least one recommendation
+  
+  // Sort by priority (highest first) and select top recommendations
+  potentialRecommendations.sort((a, b) => b.priority - a.priority);
+  
+  // Select recommendations ensuring diversity and no redundancy
+  const selectedCategories = new Set();
+  for (const rec of potentialRecommendations) {
+    if (recommendations.length >= targetRecommendations) break;
+    
+    if (!selectedCategories.has(rec.category)) {
+      selectedCategories.add(rec.category);
+      recommendations.push({
+        type: rec.type,
+        title: rec.title,
+        message: rec.message
+      });
+    }
+  }
+  
+  // Fallback: ensure minimum recommendations
   if (recommendations.length === 0) {
     recommendations.push({
       type: 'info',
-      title: 'Analysis Complete',
-      message: 'Food analysis completed. Review the nutritional information and make informed choices.'
+      title: 'Nutritional Analysis Complete',
+      message: 'Based on the analysis, make informed choices that align with your health goals and dietary needs.'
     });
   }
-
-  return recommendations;
+  
+  // If we still don't have enough recommendations, add generic helpful advice
+  while (recommendations.length < targetRecommendations) {
+    const fallbackRecommendations = [
+      {
+        type: 'info',
+        title: 'Balanced Diet Reminder',
+        message: 'Remember to maintain a balanced diet with variety from all food groups for optimal health.'
+      },
+      {
+        type: 'positive',
+        title: 'Hydration Tip',
+        message: 'Stay hydrated by drinking plenty of water throughout the day, especially when consuming processed foods.'
+      },
+      {
+        type: 'info',
+        title: 'Portion Control',
+        message: 'Pay attention to portion sizes to maintain a healthy relationship with food and prevent overconsumption.'
+      }
+    ];
+    
+    const unusedFallback = fallbackRecommendations.find(fb => 
+      !recommendations.some(rec => rec.title === fb.title)
+    );
+    
+    if (unusedFallback) {
+      recommendations.push(unusedFallback);
+    } else {
+      break;
+    }
+  }
+  
+  return recommendations.slice(0, targetRecommendations);
 }
 
 // Failsafe analysis for error cases

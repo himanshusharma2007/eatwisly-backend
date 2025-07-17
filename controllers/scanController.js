@@ -2,7 +2,81 @@ const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const { GetObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const scanModel = require("../models/scanModel");
 const { s3Client } = require("../middlewares/uploadMiddleware");
-const { Upload } = require('@aws-sdk/lib-storage');
+const { Upload } = require("@aws-sdk/lib-storage");
+const sharp = require("sharp");
+
+// Utility function to optimize and resize image for S3 storage
+async function optimizeImageForStorage(buffer, mimetype) {
+  try {
+    // Only optimize JPG, JPEG, PNG - skip WebP, AVIF and other formats
+    const shouldOptimize =
+      mimetype.includes("jpeg") ||
+      mimetype.includes("jpg") ||
+      mimetype.includes("png");
+  console.log('shouldOptimize', shouldOptimize)
+    if (!shouldOptimize) {
+      console.log(`Skipping optimization for ${mimetype} - using original`);
+      return buffer;
+    }
+
+    console.log(`Optimizing ${mimetype} for S3 storage`);
+
+    const sharpInstance = sharp(buffer)
+      .resize({
+        width: 1920,
+        height: 1080,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .withMetadata(false); // Strip metadata to reduce size
+
+    let optimizedBuffer;
+
+    if (mimetype.includes("png")) {
+      // Optimize PNG with high compression and palette reduction
+      optimizedBuffer = await sharpInstance
+        .png({
+          compressionLevel: 9, // Maximum compression
+          palette: true, // Reduce colors for smaller files
+          colors: 256, // Limit color palette
+          force: true,
+        })
+        .toBuffer();
+    } else if (mimetype.includes("jpeg") || mimetype.includes("jpg")) {
+      // Optimize JPEG with lower quality for smaller files
+      optimizedBuffer = await sharpInstance
+        .jpeg({
+          quality: 70, // Reduced quality for better compression
+          progressive: true,
+          optimizeScans: true,
+          force: true,
+        })
+        .toBuffer();
+    }
+
+    // If optimized size is larger, return original buffer
+    if (optimizedBuffer.length > buffer.length) {
+      console.log(
+        `Optimization increased size (${optimizedBuffer.length} > ${buffer.length} bytes), using original`
+      );
+      return buffer;
+    }
+
+    console.log(
+      `Optimization successful: ${buffer.length} -> ${
+        optimizedBuffer.length
+      } bytes (${Math.round(
+        (1 - optimizedBuffer.length / buffer.length) * 100
+      )}% reduction)`
+    );
+    return optimizedBuffer;
+  } catch (error) {
+    console.error("Image optimization error:", error.message);
+    console.log("Using original buffer due to optimization failure");
+    return buffer;
+  }
+}
+
 exports.getScanHistory = async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
@@ -23,8 +97,6 @@ exports.getScanHistory = async (req, res) => {
           // Fix: Remove the leading slash to get proper S3 key
           // If imagePath is "/Uploads/userId/filename.jpg", we want "Uploads/userId/filename.jpg"
           const s3Key = scan.imagePath.replace(/^\//, "");
-
-    
 
           const command = new GetObjectCommand({
             Bucket: process.env.AWS_S3_BUCKET, // Use consistent env variable
@@ -71,7 +143,6 @@ exports.getScanById = async (req, res) => {
     // Fix: Remove the leading slash to get proper S3 key
     const s3Key = scan.imagePath.replace(/^\//, "");
 
-
     const command = new GetObjectCommand({
       Bucket: process.env.AWS_S3_BUCKET, // Use consistent env variable
       Key: s3Key,
@@ -105,7 +176,7 @@ exports.deleteScan = async (req, res) => {
         Key: s3Key,
       });
       await s3Client.send(command);
-      
+
       // Only delete from MongoDB if S3 deletion was successful
       await scanModel.deleteOne({ _id: req.params.id, userId: req.user._id });
       res.json({ message: "Scan deleted successfully" });
@@ -113,11 +184,12 @@ exports.deleteScan = async (req, res) => {
       console.error("Error deleting from S3:", s3Error.message);
       if (s3Error.name === "AccessDenied") {
         return res.status(403).json({
-          message: "S3 Access Denied: Check IAM permissions for s3:DeleteObject"
+          message:
+            "S3 Access Denied: Check IAM permissions for s3:DeleteObject",
         });
       }
-      return res.status(500).json({ 
-        message: "Failed to delete file from S3. Scan retained in database." 
+      return res.status(500).json({
+        message: "Failed to delete file from S3. Scan retained in database.",
       });
     }
   } catch (error) {
@@ -128,54 +200,94 @@ exports.deleteScan = async (req, res) => {
 
 exports.saveScanResult = async (req, res) => {
   try {
-    console.log('Save scan result invoked, user:', req.user._id);
+    console.log("Save scan result invoked, user:", req.user._id);
     const { extractedText } = req.body;
     const file = req.file;
-    const analysis = JSON.parse(req.body.analysis.replace(/<\/?[^>]+(>|$)/g, ""));
+    const analysis = JSON.parse(
+      req.body.analysis.replace(/<\/?[^>]+(>|$)/g, "")
+    );
+
     if (!file) {
-      return res.status(400).json({ message: 'No image provided' });
+      return res.status(400).json({ message: "No image provided" });
     }
 
-    if (!extractedText || !analysis || typeof analysis !== 'object') {
-      console.error('Invalid scan data:', { extractedText, analysis });
-      return res.status(400).json({ message: 'Invalid scan data provided' });
+    if (!extractedText || !analysis || typeof analysis !== "object") {
+      console.error("Invalid scan data:", { extractedText, analysis });
+      return res.status(400).json({ message: "Invalid scan data provided" });
     }
 
     // Validate analysis structure
-    if (!Array.isArray(analysis.recommendations) || 
-        analysis.recommendations.some(rec => !rec.type || !rec.title || !rec.message)) {
-      console.error('Invalid recommendations structure:', analysis.recommendations);
-      return res.status(400).json({ message: 'Invalid analysis recommendations structure' });
+    if (
+      !Array.isArray(analysis.recommendations) ||
+      analysis.recommendations.some(
+        (rec) => !rec.type || !rec.title || !rec.message
+      )
+    ) {
+      console.error(
+        "Invalid recommendations structure:",
+        analysis.recommendations
+      );
+      return res
+        .status(400)
+        .json({ message: "Invalid analysis recommendations structure" });
     }
 
     if (!Array.isArray(analysis.harmfulIngredients)) {
-      console.error('Validation failed: harmfulIngredients is not an array:', analysis.harmfulIngredients);
-      return res.status(400).json({ message: 'Invalid analysis: harmfulIngredients must be an array' });
+      console.error(
+        "Validation failed: harmfulIngredients is not an array:",
+        analysis.harmfulIngredients
+      );
+      return res
+        .status(400)
+        .json({
+          message: "Invalid analysis: harmfulIngredients must be an array",
+        });
     }
 
-    if (!analysis.nutritionalInfo || 
-        typeof analysis.nutritionalInfo.totalSugar !== 'number' ||
-        typeof analysis.nutritionalInfo.totalSodium !== 'number') {
-      console.error('Invalid nutritionalInfo structure:', analysis.nutritionalInfo);
-      return res.status(400).json({ message: 'Invalid nutritional information structure' });
+    if (
+      !analysis.nutritionalInfo ||
+      typeof analysis.nutritionalInfo.totalSugar !== "number" ||
+      typeof analysis.nutritionalInfo.totalSodium !== "number"
+    ) {
+      console.error(
+        "Invalid nutritionalInfo structure:",
+        analysis.nutritionalInfo
+      );
+      return res
+        .status(400)
+        .json({ message: "Invalid nutritional information structure" });
     }
 
     // Construct S3 key
     const userId = req.user._id.toString();
     const timestamp = Date.now();
-    const sanitizedFilename = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '');
+    const sanitizedFilename = file.originalname.replace(
+      /[^a-zA-Z0-9.\-_]/g,
+      ""
+    );
     const filename = `${timestamp}_${sanitizedFilename}`;
     const s3Key = `Uploads/${userId}/${filename}`;
 
-    // Upload to S3
+    console.log(`Processing ${file.mimetype} image for S3 upload`);
+    console.log(`Original file size: ${file.size} bytes`);
+
+    // Optimize image only for specific formats before S3 upload
+    const optimizedBuffer = await optimizeImageForStorage(
+      file.buffer,
+      file.mimetype
+    );
+
+    console.log(`Final file size for S3: ${optimizedBuffer.length} bytes`);
+
+    // Upload optimized image to S3
     const upload = new Upload({
       client: s3Client,
       params: {
         Bucket: process.env.AWS_S3_BUCKET,
         Key: s3Key,
-        Body: file.buffer,
-        ContentType: file.mimetype
-      }
+        Body: optimizedBuffer,
+        ContentType: file.mimetype,
+      },
     });
 
     await upload.done();
@@ -198,21 +310,27 @@ exports.saveScanResult = async (req, res) => {
         shouldEatReason: analysis.shouldEatReason,
         recommendations: analysis.recommendations,
         healthyAlternatives: analysis.healthyAlternatives,
-        additionalNotes: analysis.additionalNotes
-      }
+        additionalNotes: analysis.additionalNotes,
+      },
     });
     await scan.save();
 
     res.json({
-      message: 'Scan result saved successfully',
+      message: "Scan result saved successfully",
       imagePath: s3Url,
-      scanId: scan._id
+      scanId: scan._id,
     });
   } catch (error) {
-    console.error('Save scan result error:', error.message);
-    if (error.name === 'AccessDenied') {
-      return res.status(403).json({ message: 'S3 Access Denied: Check IAM permissions for s3:PutObject' });
+    console.error("Save scan result error:", error.message);
+    if (error.name === "AccessDenied") {
+      return res
+        .status(403)
+        .json({
+          message: "S3 Access Denied: Check IAM permissions for s3:PutObject",
+        });
     }
-    res.status(500).json({ message: `Failed to save scan result: ${error.message}` });
+    res
+      .status(500)
+      .json({ message: `Failed to save scan result: ${error.message}` });
   }
 };

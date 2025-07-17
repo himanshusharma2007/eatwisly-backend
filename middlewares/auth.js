@@ -12,7 +12,6 @@ exports.protect = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, JWT_SECRET);
-    console.log('Token decoded:', decoded); // Debug log
 
     const user = await User.findById(decoded.id);
     if (!user) {
@@ -21,7 +20,6 @@ exports.protect = async (req, res, next) => {
     }
 
     req.user = user;
-    console.log('User set in req:', user._id); // Debug log
     next();
   } catch (error) {
     console.error('Auth middleware error:', error.message); // Debug log
