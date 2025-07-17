@@ -1,6 +1,6 @@
 const Feedback = require('../models/feedbackModel');
 
-exports.submitFeedback = async (req, res) => {
+const submitFeedback = async (req, res) => {
   try {
     const { name, email, feedbackType, message } = req.body;
 
@@ -39,7 +39,7 @@ exports.submitFeedback = async (req, res) => {
 };
 
 // Get all feedback entries (paginated, admin only)
-exports.getAllFeedback = async (req, res) => {
+const getAllFeedback = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -64,7 +64,7 @@ exports.getAllFeedback = async (req, res) => {
 };
 
 // Get a specific feedback entry by ID (admin only)
-exports.getFeedbackById = async (req, res) => {
+const getFeedbackById = async (req, res) => {
   try {
     const feedback = await Feedback.findById(req.params.id);
     if (!feedback) {
@@ -78,7 +78,7 @@ exports.getFeedbackById = async (req, res) => {
 };
 
 // Delete a specific feedback entry by ID (admin only)
-exports.deleteFeedback = async (req, res) => {
+const deleteFeedback = async (req, res) => {
   try {
     const feedback = await Feedback.findByIdAndDelete(req.params.id);
     if (!feedback) {
@@ -90,4 +90,11 @@ exports.deleteFeedback = async (req, res) => {
     console.error('Error deleting feedback:', error.message); // Debug log
     res.status(500).json({ message: 'Failed to delete feedback' });
   }
+};
+
+module.exports = {
+  submitFeedback,
+  getAllFeedback,
+  getFeedbackById,
+  deleteFeedback
 };

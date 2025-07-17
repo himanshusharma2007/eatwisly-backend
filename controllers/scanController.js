@@ -77,7 +77,7 @@ async function optimizeImageForStorage(buffer, mimetype) {
   }
 }
 
-exports.getScanHistory = async (req, res) => {
+const  getScanHistory = async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const skip = (page - 1) * limit;
@@ -130,7 +130,7 @@ exports.getScanHistory = async (req, res) => {
   }
 };
 
-exports.getScanById = async (req, res) => {
+const  getScanById = async (req, res) => {
   try {
     const scan = await scanModel.findOne({
       _id: req.params.id,
@@ -157,7 +157,7 @@ exports.getScanById = async (req, res) => {
   }
 };
 
-exports.deleteScan = async (req, res) => {
+const  deleteScan = async (req, res) => {
   try {
     const scan = await scanModel.findOne({
       _id: req.params.id,
@@ -198,7 +198,7 @@ exports.deleteScan = async (req, res) => {
   }
 };
 
-exports.saveScanResult = async (req, res) => {
+const  saveScanResult = async (req, res) => {
   try {
     console.log("Save scan result invoked, user:", req.user._id);
     const { extractedText } = req.body;
@@ -334,3 +334,5 @@ exports.saveScanResult = async (req, res) => {
       .json({ message: `Failed to save scan result: ${error.message}` });
   }
 };
+
+module.exports = { saveScanResult, getScanById, deleteScan , getScanHistory  };
