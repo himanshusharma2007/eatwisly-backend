@@ -3,7 +3,7 @@ const { processImage } = require('../utils/ocr');
 
 const { getGeminiInsight } = require('../utils/geminiHelper');
 
-exports.uploadImageAuth = async (req, res) => {
+const uploadImageAuth = async (req, res) => {
   try {
     console.log('Authenticated upload invoked, user:', req.user._id);
     console.log('File details:', req.file);
@@ -77,7 +77,7 @@ exports.uploadImageAuth = async (req, res) => {
   }
 };
 
-exports.uploadImageGuest = async (req, res) => {
+const uploadImageGuest = async (req, res) => {
   try {
     console.log('Guest upload invoked');
 
@@ -139,3 +139,4 @@ exports.uploadImageGuest = async (req, res) => {
   }
 };
 
+module.exports = { uploadImageAuth, uploadImageGuest };
