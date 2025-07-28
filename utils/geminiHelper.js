@@ -3,8 +3,9 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-exports.getGeminiInsight = async (text, userProfile = null) => {
+exports.getGeminiInsight = async (text, userProfile = null, progressCallback = null) => {
   try {
+ 
     // Construct user-specific context
     let userContext = '';
     if (userProfile) {
@@ -18,6 +19,11 @@ exports.getGeminiInsight = async (text, userProfile = null) => {
         - Health Conditions: ${diseases.length > 0 ? diseases.join(', ') : 'None reported'}
         - Known Allergies: ${allergies.length > 0 ? allergies.join(', ') : 'None reported'}
       `;
+    }
+
+    // Update progress: Building prompt
+    if (progressCallback) {
+      progressCallback(50, 'Preparing analysis request...');
     }
 
     const prompt = `
@@ -119,22 +125,84 @@ If you choose to eat this occasionally, pair it with protein or fiber to slow su
 Remember: Use this EXACT format with the === separators. Be accurate with numbers and consistent with Yes/No answers.
     `;
 
+ 
+
     console.log('Sending prompt to Gemini...'); // Debug log
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const insightText = response.text().trim();
-    console.log('Raw Gemini Response:', insightText); // Debug log
+    
+    // Create a timeout promise to ensure we don't wait indefinitely
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Gemini API timeout')), 60000); // 60 second timeout
+    });
 
-    // Enhanced parsing with better error handling
-    const analysis = parseGeminiResponse(insightText, userProfile);
-    console.log('Parsed Analysis:', JSON.stringify(analysis, null, 2)); // Debug log
+    // Progress simulation during Gemini call (since we can't get real progress from Gemini)
+    const progressSimulation = progressCallback ? simulateGeminiProgress(progressCallback) : null;
 
-    return analysis;
+    try {
+      const result = await Promise.race([
+        model.generateContent(prompt),
+        timeoutPromise
+      ]);
+
+      // Clear progress simulation
+      if (progressSimulation) {
+        clearInterval(progressSimulation);
+      }
+
+      // Update progress: Received response
+      if (progressCallback) {
+        progressCallback(75, 'Received AI analysis, processing results...');
+      }
+
+      const response = await result.response;
+      const insightText = response.text().trim();
+      console.log('Raw Gemini Response:', insightText); // Debug log
+
+      // Enhanced parsing with better error handling
+      const analysis = parseGeminiResponse(insightText, userProfile);
+      console.log('Parsed Analysis:', JSON.stringify(analysis, null, 2)); // Debug log
+
+      return analysis;
+    } catch (error) {
+      // Clear progress simulation on error
+      if (progressSimulation) {
+        clearInterval(progressSimulation);
+      }
+      throw error;
+    }
+
   } catch (error) {
     console.error("Gemini AI error:", error.message);
     return getFailsafeAnalysis(error.message);
   }
 };
+
+// Function to simulate progress during Gemini API call
+function simulateGeminiProgress(progressCallback) {
+  let currentProgress = 70;
+  const maxProgress = 90; // Don't go beyond 70% during simulation
+  
+  const interval = setInterval(() => {
+    if (currentProgress < maxProgress) {
+      currentProgress += Math.random() * 20; // Increment by 1-3%
+      currentProgress = Math.min(currentProgress, maxProgress);
+      
+      // Vary the status messages
+      const messages = [
+        'AI is analyzing ingredients...',
+        'Evaluating nutritional content...',
+        'Checking health implications...',
+        'Generating personalized recommendations...',
+        'Processing dietary restrictions...',
+        'Calculating health score...'
+      ];
+      
+      const messageIndex = Math.floor((currentProgress - 70) / 3) % messages.length;
+      progressCallback(Math.floor(currentProgress), messages[messageIndex]);
+    }
+  }, 2000); // Update every 2 seconds
+  
+  return interval;
+}
 
 // Enhanced parsing function with robust error handling
 function parseGeminiResponse(responseText, userProfile = null) {
