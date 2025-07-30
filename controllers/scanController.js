@@ -4,9 +4,12 @@ const scanModel = require("../models/scanModel");
 const { s3Client } = require("../middlewares/uploadMiddleware");
 const { Upload } = require("@aws-sdk/lib-storage");
 const sharp = require("sharp");
-
+const fs = require('fs').promises;
+const path = require('path');
 // Utility function to optimize and resize image for S3 storage
 async function optimizeImageForStorage(buffer, mimetype) {
+  console.log('buffer ', buffer )
+  console.log('mimetype ', mimetype )
   try {
     // Only optimize JPG, JPEG, PNG - skip WebP, AVIF and other formats
     const shouldOptimize =
@@ -53,7 +56,7 @@ async function optimizeImageForStorage(buffer, mimetype) {
         })
         .toBuffer();
     }
-
+  
     // If optimized size is larger, return original buffer
     if (optimizedBuffer.length > buffer.length) {
       console.log(
@@ -198,11 +201,15 @@ const  deleteScan = async (req, res) => {
   }
 };
 
-const  saveScanResult = async (req, res) => {
+
+
+const saveScanResult = async (req, res) => {
   try {
     console.log("Save scan result invoked, user:", req.user._id);
     const { extractedText } = req.body;
     const file = req.file;
+    console.log('file in saveScanResult >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>', file);
+
     const analysis = JSON.parse(
       req.body.analysis.replace(/<\/?[^>]+(>|$)/g, "")
     );
@@ -216,32 +223,21 @@ const  saveScanResult = async (req, res) => {
       return res.status(400).json({ message: "Invalid scan data provided" });
     }
 
-    // Validate analysis structure
     if (
       !Array.isArray(analysis.recommendations) ||
       analysis.recommendations.some(
         (rec) => !rec.type || !rec.title || !rec.message
       )
     ) {
-      console.error(
-        "Invalid recommendations structure:",
-        analysis.recommendations
-      );
-      return res
-        .status(400)
-        .json({ message: "Invalid analysis recommendations structure" });
+      console.error("Invalid recommendations structure:", analysis.recommendations);
+      return res.status(400).json({ message: "Invalid analysis recommendations structure" });
     }
 
     if (!Array.isArray(analysis.harmfulIngredients)) {
-      console.error(
-        "Validation failed: harmfulIngredients is not an array:",
-        analysis.harmfulIngredients
-      );
-      return res
-        .status(400)
-        .json({
-          message: "Invalid analysis: harmfulIngredients must be an array",
-        });
+      console.error("Validation failed: harmfulIngredients is not an array:", analysis.harmfulIngredients);
+      return res.status(400).json({
+        message: "Invalid analysis: harmfulIngredients must be an array",
+      });
     }
 
     if (
@@ -249,31 +245,26 @@ const  saveScanResult = async (req, res) => {
       typeof analysis.nutritionalInfo.totalSugar !== "number" ||
       typeof analysis.nutritionalInfo.totalSodium !== "number"
     ) {
-      console.error(
-        "Invalid nutritionalInfo structure:",
-        analysis.nutritionalInfo
-      );
-      return res
-        .status(400)
-        .json({ message: "Invalid nutritional information structure" });
+      console.error("Invalid nutritionalInfo structure:", analysis.nutritionalInfo);
+      return res.status(400).json({ message: "Invalid nutritional information structure" });
     }
 
     // Construct S3 key
     const userId = req.user._id.toString();
     const timestamp = Date.now();
-    const sanitizedFilename = file.originalname.replace(
-      /[^a-zA-Z0-9.\-_]/g,
-      ""
-    );
+    const sanitizedFilename = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "");
     const filename = `${timestamp}_${sanitizedFilename}`;
     const s3Key = `Uploads/${userId}/${filename}`;
 
     console.log(`Processing ${file.mimetype} image for S3 upload`);
     console.log(`Original file size: ${file.size} bytes`);
 
-    // Optimize image only for specific formats before S3 upload
+    // Read file buffer from disk
+    const filePath = path.resolve(file.path);
+    const fileBuffer = await fs.readFile(filePath);
+
     const optimizedBuffer = await optimizeImageForStorage(
-      file.buffer,
+      fileBuffer,
       file.mimetype
     );
 
@@ -292,11 +283,9 @@ const  saveScanResult = async (req, res) => {
 
     await upload.done();
 
-    // Construct S3 URL and relative path
     const s3Url = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
     const relativePath = `/${s3Key}`;
 
-    // Save to MongoDB
     const scan = new scanModel({
       userId: req.user._id,
       imagePath: relativePath,
@@ -313,6 +302,7 @@ const  saveScanResult = async (req, res) => {
         additionalNotes: analysis.additionalNotes,
       },
     });
+
     await scan.save();
 
     res.json({
@@ -323,16 +313,13 @@ const  saveScanResult = async (req, res) => {
   } catch (error) {
     console.error("Save scan result error:", error.message);
     if (error.name === "AccessDenied") {
-      return res
-        .status(403)
-        .json({
-          message: "S3 Access Denied: Check IAM permissions for s3:PutObject",
-        });
+      return res.status(403).json({
+        message: "S3 Access Denied: Check IAM permissions for s3:PutObject",
+      });
     }
-    res
-      .status(500)
-      .json({ message: `Failed to save scan result: ${error.message}` });
+    res.status(500).json({ message: `Failed to save scan result: ${error.message}` });
   }
 };
+
 
 module.exports = { saveScanResult, getScanById, deleteScan , getScanHistory  };
